@@ -1,9 +1,12 @@
 import React from 'react';
 import * as Toast from '@radix-ui/react-toast';
+import { addDoc, collection, onSnapshot, updateDoc, doc, Timestamp } from "firebase/firestore";
+import { db } from "./firebase";
+
 import './App.css';
 
 interface ToastNotification {
-  id: number;
+  id: string;
   eventDate: Date;
   message: string;
   open: boolean;
@@ -11,27 +14,35 @@ interface ToastNotification {
 
 function App() {
   const [toasts, setToasts] = React.useState<ToastNotification[]>([]);
-  const timerRef = React.useRef<number>(0);
 
   React.useEffect(() => {
-    return () => clearTimeout(timerRef.current);
+    const unsubscribe = onSnapshot(collection(db, 'notifications'), (snapshot) => {
+      const notifications = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          eventDate: data.eventDate.toDate(),
+          message: data.message,
+          open: data.open,
+        } as ToastNotification;
+      });
+      setToasts(notifications);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const notify = (message: string) => {
-    const id = Date.now();
-    const eventDate = oneWeekAway();
-    setToasts((prevToasts) => [
-      ...prevToasts,
-      { id, eventDate, message, open: true },
-    ]);
+  const notify = async (message: string) => {
+    const eventDate = new Date();
+    await addDoc(collection(db, "notifications"), {
+      eventDate: Timestamp.fromDate(eventDate),
+      message,
+      open: true
+    });
   };
 
-  const handleClose = (id: number) => {
-    setToasts((prevToasts) =>
-      prevToasts.map((toast) =>
-        toast.id === id ? { ...toast, open: false } : toast
-      )
-    );
+  const handleClose = async (id: string) => {
+    await updateDoc(doc(db, "notifications", id), { open: false });
   };
 
   return (
@@ -86,14 +97,8 @@ function App() {
   );
 }
 
-function oneWeekAway(date?: Date) {
-  const now = new Date();
-  const inOneWeek = now.setDate(now.getDate() + 7);
-  return new Date(inOneWeek);
-}
-
-function prettyDate(date?: Date) {
-  return new Intl.DateTimeFormat('en-US', {dateStyle: 'full', timeStyle: 'short'}).format(date);
+function prettyDate(date?: Date): string {
+  return new Intl.DateTimeFormat('en-US', { dateStyle: 'full', timeStyle: 'short' }).format(date);
 }
 
 export default App;
